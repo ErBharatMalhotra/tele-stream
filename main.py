@@ -91,3 +91,6 @@ async def main():
 
 if __name__ == "__main__":
     client.loop.run_until_complete(main())
+import time
+while True:
+    time.sleep(10)
