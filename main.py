@@ -1,4 +1,5 @@
 import os
+import time
 import asyncio
 import subprocess
 from telethon.sessions import StringSession
@@ -91,6 +92,7 @@ async def main():
 
 if __name__ == "__main__":
     client.loop.run_until_complete(main())
-import time
+print("🔥 Bot is running...")
+
 while True:
-    time.sleep(10)
+    time.sleep(5)
