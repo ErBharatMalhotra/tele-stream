@@ -1,6 +1,7 @@
 import os
 import asyncio
 import subprocess
+from telethon.sessions import StringSession
 from telethon import TelegramClient, events
 
 API_ID = int(os.getenv("API_ID"))
