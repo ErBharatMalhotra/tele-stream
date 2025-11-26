@@ -1,53 +1,46 @@
 import os
 import asyncio
 import subprocess
-
-from dotenv import load_dotenv
 from telethon import TelegramClient, events
-from telethon.sessions import StringSession
-
-load_dotenv()
 
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
-SESSION_STRING = os.getenv("SESSION_STRING")  # <-- MOST IMPORTANT
+SESSION = os.getenv("SESSION_STRING")
 RTMP_URL = os.getenv("RTMP_URL")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 
-if not all([API_ID, API_HASH, SESSION_STRING, RTMP_URL, CHANNEL_ID]):
-    raise RuntimeError("⚠️ Missing environment variables!")
-
-# User session (NO phone login)
-client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
+client = TelegramClient(StringSession(SESSION), API_ID, API_HASH)
 
 playlist = []
 
+
 def is_video(msg):
-    """Check if message contains a video."""
     if msg.video:
         return True
-    if msg.document and msg.document.mime_type:
-        return msg.document.mime_type.startswith("video/")
+    if msg.document and msg.document.mime_type and msg.document.mime_type.startswith("video/"):
+        return True
     return False
+
 
 async def load_initial():
     print("📂 Loading channel history...")
-
     async for msg in client.iter_messages(CHANNEL_ID, limit=200):
         if is_video(msg):
             playlist.append((CHANNEL_ID, msg.id))
-
     playlist.reverse()
     print(f"✅ Loaded {len(playlist)} videos into playlist.")
 
+
 @client.on(events.NewMessage(chats=CHANNEL_ID))
-async def handler(event):
+async def new_video(event):
     msg = event.message
     if is_video(msg):
         playlist.append((CHANNEL_ID, msg.id))
         print(f"➕ New video added: {msg.id} | Total {len(playlist)}")
 
+
 async def stream_loop():
+    await load_initial()
 
     while True:
         if not playlist:
@@ -56,7 +49,6 @@ async def stream_loop():
             continue
 
         chat, mid = playlist.pop(0)
-
         try:
             msg = await client.get_messages(chat, ids=mid)
             file = await msg.download_media()
@@ -64,51 +56,35 @@ async def stream_loop():
 
             print("📡 Starting livestream...")
             cmd = [
-                "ffmpeg", "-re", "-i", file, "-vcodec", "libx264", "-preset", "veryfast",
-                "-maxrate", "3000k", "-bufsize", "6000k", "-acodec", "aac",
-                "-ar", "44100", "-b:a", "128k", "-f", "flv", RTMP_URL
+                "ffmpeg", "-re", "-i", file,
+                "-vcodec", "libx264", "-preset", "veryfast",
+                "-maxrate", "3000k", "-bufsize", "6000k",
+                "-acodec", "aac", "-ar", "44100", "-b:a", "128k",
+                "-f", "flv", RTMP_URL
             ]
 
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT
+            process = await asyncio.create_subprocess_exec(
+                *cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
             )
 
-            while True:
-                l = await proc.stdout.readline()
-                if not l:
-                    break
+            await process.wait()
+            print("✔ Live ended for this video")
 
-            await proc.wait()
-
-            # re-add video for loop playback
             playlist.append((chat, mid))
-
-            try:
-                os.remove(file)
-            except:
-                pass
+            os.remove(file)
 
         except Exception as e:
-            print("❌ Error:", e)
+            print("❌ STREAM ERROR:", e)
             playlist.append((chat, mid))
             await asyncio.sleep(5)
 
 
 async def main():
     print("📱 Starting user session...")
-
-    await client.connect()
-    if not await client.is_user_authorized():
-        print("❌ Invalid SESSION STRING")
-        return
-
+    await client.start()
     print("🤖 User logged in successfully!")
-    print("📺 Streaming system ready.")
-
-    await load_initial()
-    asyncio.create_task(stream_loop())
+    
+    client.loop.create_task(stream_loop())
     await client.run_until_disconnected()
 
 
