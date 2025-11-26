@@ -91,8 +91,5 @@ async def main():
 
 
 if __name__ == "__main__":
+    print("🔥 Bot is starting...")
     client.loop.run_until_complete(main())
-print("🔥 Bot is running...")
-
-while True:
-    time.sleep(5)
