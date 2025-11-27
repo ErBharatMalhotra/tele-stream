@@ -11,7 +11,6 @@ RTMP_URL = os.getenv("RTMP_URL")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 
 client = TelegramClient(StringSession(SESSION), API_ID, API_HASH)
-
 playlist = []
 
 
@@ -28,6 +27,7 @@ async def load_initial():
     async for msg in client.iter_messages(CHANNEL_ID, limit=200):
         if is_video(msg):
             playlist.append((CHANNEL_ID, msg.id))
+
     playlist.reverse()
     print(f"✅ Loaded {len(playlist)} videos into playlist.")
 
@@ -37,7 +37,7 @@ async def new_video(event):
     msg = event.message
     if is_video(msg):
         playlist.append((CHANNEL_ID, msg.id))
-        print(f"➕ New video added: {msg.id} | Total {len(playlist)}")
+        print(f"➕ New video added: {msg.id}")
 
 
 async def stream_loop():
@@ -49,10 +49,10 @@ async def stream_loop():
             await asyncio.sleep(5)
             continue
 
-        chat, mid = playlist.pop(0)
+        chat, msg_id = playlist.pop(0)
 
         try:
-            msg = await client.get_messages(chat, ids=mid)
+            msg = await client.get_messages(chat, ids=msg_id)
             file = await msg.download_media()
             print(f"📥 Downloaded: {file}")
 
@@ -60,36 +60,30 @@ async def stream_loop():
             cmd = [
                 "ffmpeg", "-re", "-i", file,
                 "-vcodec", "libx264", "-preset", "veryfast",
-                "-maxrate", "3000k", "-bufsize", "6000k",
-                "-acodec", "aac", "-ar", "44100", "-b:a", "128k",
+                "-acodec", "aac",
                 "-f", "flv", RTMP_URL
             ]
 
             process = await asyncio.create_subprocess_exec(
-                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT
+                *cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
             )
 
-            while True:
-                line = await process.stdout.readline()
-                if not line:
-                    break
-
             await process.wait()
-            print("✔ Live ended")
+            print("✔ Stream ended")
 
-            playlist.append((chat, mid))
+            playlist.append((chat, msg_id))
             os.remove(file)
 
         except Exception as e:
             print("❌ STREAM ERROR:", e)
-            playlist.append((chat, mid))
+            playlist.append((chat, msg_id))
             await asyncio.sleep(5)
 
 
 async def main():
     print("📱 Starting user session...")
     await client.start()
-    print("🤖 User logged in successfully!")
+    print("🤖 Logged in")
 
     asyncio.create_task(stream_loop())
     await client.run_until_disconnected()
