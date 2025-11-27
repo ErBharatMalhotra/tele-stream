@@ -1,17 +1,16 @@
-FROM debian:latest
+FROM python:3.10-slim
 
+# Install ffmpeg
 RUN apt-get update && \
-    apt-get install -y python3 python3-pip python3-venv ffmpeg && \
+    apt-get install -y ffmpeg && \
     apt-get clean
 
 WORKDIR /app
 
 COPY . .
 
-RUN python3 -m venv /app/venv
-ENV PATH="/app/venv/bin:$PATH"
+# Install python dependencies
+RUN pip install --upgrade pip
+RUN pip install --no-cache-dir -r requirements.txt
 
-RUN pip install --upgrade pip && \
-    pip install -r requirements.txt
-
-CMD ["python3", "main.py"]
+CMD ["python", "main.py"]
