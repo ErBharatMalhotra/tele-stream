@@ -11,7 +11,9 @@ RTMP_URL = os.getenv("RTMP_URL")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 
 client = TelegramClient(StringSession(SESSION), API_ID, API_HASH)
+
 playlist = []
+
 
 def is_video(msg):
     if msg.video:
@@ -19,6 +21,7 @@ def is_video(msg):
     if msg.document and msg.document.mime_type and msg.document.mime_type.startswith("video/"):
         return True
     return False
+
 
 async def load_initial():
     print("📂 Loading channel history...")
@@ -28,12 +31,14 @@ async def load_initial():
     playlist.reverse()
     print(f"✅ Loaded {len(playlist)} videos into playlist.")
 
+
 @client.on(events.NewMessage(chats=CHANNEL_ID))
 async def new_video(event):
     msg = event.message
     if is_video(msg):
         playlist.append((CHANNEL_ID, msg.id))
-        print(f"➕ New video added: {msg.id}")
+        print(f"➕ New video added: {msg.id} | Total {len(playlist)}")
+
 
 async def stream_loop():
     await load_initial()
@@ -45,11 +50,13 @@ async def stream_loop():
             continue
 
         chat, mid = playlist.pop(0)
+
         try:
             msg = await client.get_messages(chat, ids=mid)
             file = await msg.download_media()
             print(f"📥 Downloaded: {file}")
 
+            print("📡 Starting livestream...")
             cmd = [
                 "ffmpeg", "-re", "-i", file,
                 "-vcodec", "libx264", "-preset", "veryfast",
@@ -59,10 +66,16 @@ async def stream_loop():
             ]
 
             process = await asyncio.create_subprocess_exec(
-                *cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT
             )
+
+            while True:
+                line = await process.stdout.readline()
+                if not line:
+                    break
+
             await process.wait()
-            print("✔ Stream finished")
+            print("✔ Live ended")
 
             playlist.append((chat, mid))
             os.remove(file)
@@ -72,14 +85,16 @@ async def stream_loop():
             playlist.append((chat, mid))
             await asyncio.sleep(5)
 
-async def main():
-    print("📱 Starting session...")
-    await client.start()
-    print("🤖 Logged in!")
 
-    client.loop.create_task(stream_loop())
+async def main():
+    print("📱 Starting user session...")
+    await client.start()
+    print("🤖 User logged in successfully!")
+
+    asyncio.create_task(stream_loop())
     await client.run_until_disconnected()
 
+
 if __name__ == "__main__":
-    print("🔥 Bot starting...")
+    print("🔥 Bot is starting...")
     client.loop.run_until_complete(main())
